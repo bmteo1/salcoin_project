@@ -1,4 +1,3 @@
-from salcoin_block import addBlockToChain, Block, getBlockchain, getLatestBlock, handleReceivedTransaction, isValidBlockStructure,replaceChain
 from salcoin_transaction import Transaction
 from salcoin_pool import getTransactionPool
 import websockets
@@ -23,7 +22,7 @@ async def getSocket():
     return sockets
 
 
-async def initConnection(ws):
+async def initConnection(ws): 
     sockets.append(ws)
     await initMessageHandler(ws)
     await initErrorHandler(ws)
@@ -46,6 +45,7 @@ async def initP2PServer(p2p_port):
     print(f'Listening websocket Peer to Peer port on: {p2p_port}')
 
 async def initMessageHandler(ws):
+    from salcoin_block import handleReceivedTransaction
     for data in ws:
         try:
             message = await jsonToObject(data)
@@ -105,7 +105,7 @@ def queryTransactionPoolMsg():
     return Message(MessageType.QUERY_TRANSACTION_POOL, None)
 
 def responseTransactionPoolMsg():
-    return Message(MessageType.RESPONSE_TRANSACTION_POOL, json.dumps(get_transaction_pool()))
+    return Message(MessageType.RESPONSE_TRANSACTION_POOL, json.dumps(getTransactionPool()))
 
 async def initErrorHandler(ws):
     async def closeConnection():
@@ -115,6 +115,7 @@ async def initErrorHandler(ws):
     ws.on('error', closeConnection)
 
 def handleBlockchainResponse(received_blocks):
+    from salcoin_block import getLatestBlock, isValidBlockStructure, addBlockToChain, replaceChain
     if len(received_blocks) == 0:
         print('Received block chain size of 0')
         return
@@ -129,10 +130,10 @@ def handleBlockchainResponse(received_blocks):
         print(f'Blockchain possibly behind. We got: {latestBlockHeld.index} Peer got: {latestBlockReceived.index}')
         if latestBlockHeld.hash == latestBlockReceived.previous_hash:
             if addBlockToChain(latestBlockReceived):
-                await broadcast(responseLatestMsg())
+                broadcast(responseLatestMsg())
         elif len(received_blocks) == 1:
             print('We have to query the chain from our peer')
-            await broadcast(queryAllMsg())
+            broadcast(queryAllMsg())
         else:
             print('Received blockchain is longer than current blockchain')
             replaceChain(received_blocks)
@@ -140,7 +141,7 @@ def handleBlockchainResponse(received_blocks):
         print('Received blockchain is not longer than received blockchain. Do nothing')
 
 async def broadcastLatest():
-    await broadcast(responseLatestMsg())
+    broadcast(responseLatestMsg())
 
 def connectToPeers(new_peer):
     asyncio.create_task(connect(new_peer))

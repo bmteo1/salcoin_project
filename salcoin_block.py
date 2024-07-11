@@ -3,42 +3,47 @@ import time
 from Crypto.Hash import RIPEMD160
 from copy import deepcopy
 import math
-from salcoin_communication import broadcastLatest, broadCastTransactionPool
-from salcoin_transaction import getCoinbaseTransaction, isValidAddress, processTransactions, Transaction, UnspentTxOut
+from salcoin_communication import broadcastLatest, broadcastTransactionPool
+from salcoin_transaction import getCoinbaseTransaction, isValidAddress, processTransactions, Transaction, UnspentTxOut, TxIn, TxOut
 from salcoin_pool import addToTransactionPool, getTransactionPool, updateTransactionPool
 from salcoin_wallets import createTransaction, findUnspentTxOuts, getBalance, getPrivateFromWallet, getPublicFromWallet
 
 class Block:
-    def __init__(self,index, previousHash,
+    def __init__(self,index, previous_hash,
                 timestamp, data, difficulty, minterBalance, minterAddress):
         self.index = index
         self.previous_hash = previous_hash
         self.data = data
         self.timestamp = timestamp
-        self.current_hash = self.hash_block()
         self.difficulty = difficulty
         self.minterBalance = minterBalance
         self.minterAddress = minterAddress
+        self.current_hash = self.hash_block()
     
     def hash_block(self):
         sha256 = hashlib.sha256()
-        sha256.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previousHash)+ str(self.minterAddress)+str(self.minterBalance)+str(self.difficulty)).encode('utf-8'))
+        sha256.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash)+ str(self.minterAddress)+str(self.minterBalance)+str(self.difficulty)).encode('utf-8'))
         sha256_hash = sha256.digest()
         ripemd160 = RIPEMD160.new()
         ripemd160.update(sha256_hash)
         return ripemd160.hexdigest()
 
-genesis_transaction = {
-     'txIns': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
-    'txOuts': [{
-        'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
-        'amount': 50
-    }],
-    'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
-}
+# genesisTransaction = {
+#     'tx_ins': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
+#     'tx_outs': [{
+#         'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
+#         'amount': 50
+#     }],
+#     'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
+# }
+genesisTransaction = Transaction(
+    id =  '75205d1fe27602cddb09ca12487051ce20719a7a',
+    tx_ins = [TxIn(signature="", txOutId='', txOutIndex=0)],
+    tx_outs = [TxOut(address='04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a', amount=50)]
+)
 
 genesisBlock = Block(
-    0, '91a73664bc84c0baa1fc75ea6e4aa6d1d20c5df664c724e3159aefc2e1186627', '', int(time.time()), [genesisTransaction], 0, 0, "04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a"
+    0, '91a73664bc84c0baa1fc75ea6e4aa6d1d20c5df664c724e3159aefc2e1186627', int(time.time()), [genesisTransaction], 0, 0, "04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a"
 )
 
 mintingWithoutCoinIndex = 100
@@ -173,7 +178,7 @@ def hashMatchesBlockContent(block):
 
 def isBlockStakingValid(prevhash, timestamp, balance, difficulty, index):
     difficulty = int(difficulty) + 1
-    if int(index) <= mintingWithoutCoindIndex:
+    if int(index) <= mintingWithoutCoinIndex:
         balance = int(balance) + 1
     
     balanceOverDifficulty = (Decimal(2) ** 256) * Decimal(balance) / Decimal(difficulty)

@@ -13,27 +13,32 @@ class UnspentTxOut:
         self.amount = amount
     
 class TxOut:
-    def __init__(self, address: str, amount: int):
+    def __init__(self, address, amount):
         self.address = address
         self.amount = amount
 
 class Transaction:
-    def __init__(self, id: str, tx_ins: list, tx_outs: list):
+    def __init__(self, id, tx_ins, tx_outs):
         self.id = id
         self.tx_ins = tx_ins
         self.tx_outs = tx_outs
 
 class TxIn:
-    def __init__(self, txOutId: str, txOutIndex: int, signature: str):
+    def __init__(self, txOutId, txOutIndex, signature):
         self.txOutId = txOutId
         self.txOutIndex = txOutIndex
         self.signature = signature
 
-def getTransactionId(transaction: Transaction) -> str:
+def getTransactionId(transaction):
     txInContent = ''.join([txIn.txOutId + str(txIn.txOutIndex) for txIn in transaction.tx_ins])
     txOutContent = ''.join([txOut.address + str(txOut.amount) for txOut in transaction.tx_outs])
-    return RIPEMD160.new().update(hashlib.sha256((txInContent + txOutContent).encode('utf-8')).digest()).hexdigest()
-
+    combinedData = txInContent + txOutContent
+    sha256 = hashlib.sha256()
+    sha256.update(combinedData.encode('utf-8'))
+    sha256_hash = sha256.digest()
+    ripemd160 = RIPEMD160.new()
+    ripemd160.update(sha256_hash)
+    return ripemd160.hexdigest()
 
 def validateTransaction(transaction: Transaction, unspentTxOuts):
     if not isValidTransactionStructure(transaction):
@@ -59,16 +64,17 @@ def validateBlockTransactions(transactions, unspentTxOuts, blockIndex):
         print('invalid coinbase transaction: ' + str(coinbaseTx))
         return False
 
-    txIns = [tx.txIns for tx in transactions]
+    txIns = [tx.tx_ins for tx in transactions]
     if hasDuplicates(txIns):
         return False
 
     normalTransactions = transactions[1:]
-    validations = [validate_transaction(tx, unspent_tx_outs) for tx in normal_transactions]
+    validations = [validateTransaction(tx, unspentTxOuts) for tx in normalTransactions]
     return all(validations)
 
 def hasDuplicates(tx_ins):
-    groups = Counter([tx_in.tx_out_id + str(tx_in.tx_out_index) for tx_in in tx_ins])
+    flat_tx_ins = [tx_in for sublist in tx_ins for tx_in in sublist]
+    groups = Counter([tx_in.txOutId + str(tx_in.txOutIndex) for tx_in in flat_tx_ins])
     for key, value in groups.items():
         if value > 1:
             print(f'duplicate txIn: {key}')
@@ -89,7 +95,7 @@ def validateCoinbaseTx(transaction, blockIndex):
         print('one txIn must be specified in the coinbase transaction')
         return False
     
-    if transaction.tx_ins[0].tx_out_index != blockIndex:
+    if transaction.tx_ins[0].txOutIndex != blockIndex:
         print('the txIn signature in coinbase tx must be the block height')
         return False
     
@@ -105,7 +111,7 @@ def validateCoinbaseTx(transaction, blockIndex):
 
 def find_utxo(a_unspent_tx_outs):
     for utxo in a_unspent_tx_outs:
-        if utxo.tx_out_id == tx_in.tx_out_id and utxo.tx_out_index == tx_in.tx_out_index:
+        if utxo.txOutId == tx_in.txOutId and utxo.txOutIndex == tx_in.txOutIndex:
             return utxo
 
 def validateTxIn(txIn, transaction, unspentTxOuts):
@@ -173,7 +179,7 @@ def updateUnspentTxOuts(transactions, unspentTxOuts):
     ]
 
     consumedTxOuts = [
-        UnspentTxOut(tx_in.tx_out_id, tx_in.tx_out_index, '', 0.0)
+        UnspentTxOut(tx_in.txOutId, tx_in.txOutIndex, '', 0.0)
         for t in transactions
         for tx_in in t.tx_ins
     ]
