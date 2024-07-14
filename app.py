@@ -1,16 +1,16 @@
 from flask import Flask, request, jsonify
 from salcoin_block import *
 from salcoin_communication import connectToPeers, getSocket, initP2PServer
-from salcoin_transaction import UnspentTxOut, Transaction
+from salcoin_transaction import UnspentTxOut, Transaction, getTransactionId
 from salcoin_pool import getTransactionPool
 from salcoin_wallets import getPublicFromWallet, initWallet
+import argparse
+import asyncio
+import threading
+
 
 app = Flask(__name__)
 
-server_port = 3001
-peer_port = 5000
-
-initP2PServer(peer_port)
 initWallet()
 
 @app.route('/blocks', methods=['GET'])
@@ -46,8 +46,9 @@ def get_unspent_tx_outs(address):
 @app.route('/unspentTransactionOutputs', methods=['GET'])
 def get_unspent_transaction_outputs():
     unspent_tx_outs = getUnspentTxOuts()
+    if not unspent_tx_outs:
+        return jsonify({'error': 'No unspent transactions'}), 404
     return jsonify([i.to_dict() for i in unspent_tx_outs]), 200
-
 
 @app.route('/myUnspentTransactionOutputs', methods=['GET'])
 def get_my_unspent_transaction_outputs():
@@ -56,20 +57,6 @@ def get_my_unspent_transaction_outputs():
         return jsonify({'error': 'No unspent transactions'}), 404
     return jsonify([i.to_dict() for i  in my_unspent_tx_outs]), 200
 
-@app.route('/mintRawBlock', methods=['POST'])
-def mint_raw_block():
-    data = request.get_json()
-    if not data or 'data' not in data:
-        return jsonify({'error': 'data parameter is missing'}), 400
-    
-    tx = [Transaction(data = data['data'])]
-    new_block = generateRawNextBlock(tx)
-    print(new_block.to_dict())
-    if new_block:
-        return jsonify(new_block), 200
-    else:
-        return jsonify({'error': 'could not generate block'}), 400
-
 @app.route('/mintBlock', methods=['POST'])
 def mint_block():
     new_block = generateNextBlock()
@@ -77,7 +64,6 @@ def mint_block():
         return jsonify(new_block.to_dict()), 200
     else:
         return jsonify({'error': 'could not generate block'}), 400
-
 
 @app.route('/balance', methods=['GET'])
 def get_balance():
@@ -96,7 +82,7 @@ def mint_transaction():
         return jsonify({'error': 'invalid address or amount'}), 400
     
     address = data['address']
-    amount = data['amount']
+    amount = int(data['amount'])
     try:
         resp = generatenextBlockWithTransaction(address, amount)
         return jsonify(resp.to_dict()), 200
@@ -110,7 +96,7 @@ def send_transaction():
         return jsonify({'error': 'invalid address or amount'}), 400
     
     address = data['address']
-    amount = data['amount']
+    amount = int(data['amount'])
     try:
         resp = sendTransaction(address, amount)
         return jsonify(resp.to_dict()), 200
@@ -124,7 +110,8 @@ def get_transaction_pool():
 
 @app.route('/peers', methods=['GET'])
 def get_peers():
-    peers = [f"{s._socket.getpeername()[0]}:{s._socket.getpeername()[1]}" for s in getSocket()]
+    sockets = asyncio.run(getSocket())
+    peers = [f"{s._socket.getpeername()[0]}:{s._socket.getpeername()[1]}" for s in sockets]
     return jsonify(peers), 200
 
 @app.route('/addPeer', methods=['POST'])
@@ -134,7 +121,8 @@ def add_peer():
         return jsonify({'error': 'peer parameter is missing'}), 400
     
     peer = data['peer']
-    connectToPeers(peer)
+    initP2PServer(peer)
+    asyncio.run(connectToPeers(peer))
     return jsonify({'message': 'Peer added successfully'}), 200
 
 @app.route('/stop', methods=['POST'])
@@ -142,4 +130,4 @@ def stop_server():
     exit(0)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=3001)
+    app.run(debug=True)

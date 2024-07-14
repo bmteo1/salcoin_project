@@ -93,13 +93,8 @@ def generateRawNextBlock(blockData):
     previousBlock = getLatestBlock()
     difficulty = getDifficulty(getBlockchain())
     nextIndex = previousBlock.index + 1
-
-    print("blockData",blockData)
-
     newBlock = findBlock(nextIndex, previousBlock.current_hash, blockData, difficulty)
 
-    print("newBlock",newBlock.to_dict())
-    
     if addBlockToChain(newBlock):
         try:
             asyncio.run(broadcastLatest())

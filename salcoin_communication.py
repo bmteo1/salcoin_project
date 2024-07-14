@@ -37,11 +37,11 @@ async def jsonToObject(data):
         print(f'Could not parse received JSON message: {data}')
         return None
 
-async def initP2PServer(p2p_port):
+def initP2PServer(p2p_port):
     async def handleConnection(ws, path):
         await initConnection(ws)
 
-    server = await websockets.serve(handleConnection, 'localhost', p2p_port)
+    server = websockets.serve(handleConnection, 'localhost', p2p_port)
     print(f'Listening websocket Peer to Peer port on: {p2p_port}')
 
 async def initMessageHandler(ws):
@@ -145,11 +145,9 @@ def handleBlockchainResponse(received_blocks):
 async def broadcastLatest():
     await broadcast(responseLatestMsg())
 
-def connectToPeers(new_peer):
-    try:
-        asyncio.run(connect(new_peer))
-    except:
-        asyncio.create_task(connect(new_peer))
+async def connectToPeers(new_peer):
+    peer_url = f'ws://localhost:{new_peer}/'
+    asyncio.create_task(connect(peer_url))
 
 async def connect(new_peer):
     try:

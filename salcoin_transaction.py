@@ -4,7 +4,7 @@ from ecdsa import SigningKey, SECP256k1, VerifyingKey
 from collections import Counter
 from Crypto.Hash import RIPEMD160
 
-COINBASE_AMOUNT = 100
+COINBASE_AMOUNT = 50
 
 class UnspentTxOut: 
     def __init__(self, txOutId, txOutIndex, address, amount):
@@ -33,22 +33,15 @@ class TxOut:
         }
 
 class Transaction:
-    def __init__(self, id=0, tx_ins=[], tx_outs=[], data = ""):
+    def __init__(self, id=0, tx_ins=[], tx_outs=[]):
         self.id = id
         self.tx_ins = tx_ins
         self.tx_outs = tx_outs
-        self.data = data
 
     def setTxId(self, id):
         self.id = id
     
     def to_dict(self):
-        if self.data!="":
-            return {
-                'id': self.id,
-                'data': self.data
-            }
-
         return {
             'id': self.id,
             'tx_ins': [tx_in.to_dict() for tx_in in self.tx_ins],
@@ -159,7 +152,7 @@ def validateTxIn(txIn, transaction, unspentTxOuts):
     if referencedUTxOut is None:
         print('referenced txOut not found: ' + json.dumps(txIn.to_dict()))
         return False
-        
+
     address = referencedUTxOut.address
     try:
         key = VerifyingKey.from_string(bytes.fromhex(address[4:]), curve=SECP256k1)
