@@ -43,11 +43,13 @@ def initP2PServer(p2p_port):
 
     server = websockets.serve(handleConnection, 'localhost', p2p_port)
     print(f'Listening websocket Peer to Peer port on: {p2p_port}')
+    return server
 
 async def initMessageHandler(ws):
     from salcoin_block import handleReceivedTransaction
-    for data in ws:
+    async for data in ws:
         try:
+            print(data)
             message = await jsonToObject(data)
             if message is None:
                 print(f'Could not parse received JSON message: {data}')
@@ -146,13 +148,14 @@ async def broadcastLatest():
     await broadcast(responseLatestMsg())
 
 async def connectToPeers(new_peer):
-    peer_url = f'ws://localhost:{new_peer}/'
+    peer_url = f'ws://localhost:{new_peer}'
     asyncio.create_task(connect(peer_url))
 
 async def connect(new_peer):
     try:
         async with websockets.connect(new_peer) as ws:
             await initConnection(ws)
+        print("Connected to peer: ", new_peer)
     except Exception as e:
         print(f'Connection failed: {e}')
 
