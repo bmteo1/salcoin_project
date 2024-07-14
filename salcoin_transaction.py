@@ -1,9 +1,10 @@
 import hashlib
-from ecdsa import SigningKey, SECP256k1
+import re
+from ecdsa import SigningKey, SECP256k1, VerifyingKey
 from collections import Counter
 from Crypto.Hash import RIPEMD160
 
-COINBASE_AMOUNT = 50
+COINBASE_AMOUNT = 100
 
 class UnspentTxOut: 
     def __init__(self, txOutId, txOutIndex, address, amount):
@@ -12,22 +13,60 @@ class UnspentTxOut:
         self.address = address
         self.amount = amount
     
+    def to_dict(self):
+        return {
+            'txOutId': self.txOutId,
+            'txOutIndex': self.txOutIndex,
+            'address': self.address,
+            'amount': self.amount
+        }
+    
 class TxOut:
     def __init__(self, address, amount):
         self.address = address
         self.amount = amount
+    
+    def to_dict(self):
+        return {
+            'address': self.address,
+            'amount': self.amount
+        }
 
 class Transaction:
-    def __init__(self, id, tx_ins, tx_outs):
+    def __init__(self, id=0, tx_ins=[], tx_outs=[], data = ""):
         self.id = id
         self.tx_ins = tx_ins
         self.tx_outs = tx_outs
+        self.data = data
+
+    def setTxId(self, id):
+        self.id = id
+    
+    def to_dict(self):
+        if self.data!="":
+            return {
+                'id': self.id,
+                'data': self.data
+            }
+
+        return {
+            'id': self.id,
+            'tx_ins': [tx_in.to_dict() for tx_in in self.tx_ins],
+            'tx_outs': [tx_out.to_dict() for tx_out in self.tx_outs]
+        }
 
 class TxIn:
     def __init__(self, txOutId, txOutIndex, signature):
         self.txOutId = txOutId
         self.txOutIndex = txOutIndex
         self.signature = signature
+    
+    def to_dict(self):
+        return {
+            'signature': self.signature,
+            'txOutId': self.txOutId,
+            'txOutIndex': self.txOutIndex
+        }
 
 def getTransactionId(transaction):
     txInContent = ''.join([txIn.txOutId + str(txIn.txOutIndex) for txIn in transaction.tx_ins])
@@ -40,15 +79,15 @@ def getTransactionId(transaction):
     ripemd160.update(sha256_hash)
     return ripemd160.hexdigest()
 
-def validateTransaction(transaction: Transaction, unspentTxOuts):
+def validateTransaction(transaction, unspentTxOuts):
     if not isValidTransactionStructure(transaction):
         return False
     if getTransactionId(transaction) != transaction.id:
         print('invalid tx id: ' + transaction.id)
         return False
 
-    hasValidTxIns = map(lambda txIn: validateTxIn(txIn, transaction, unspentTxOuts), transaction.tx_ins)
-    if not reduce(lambda a, b: a and b, hasValidTxIns, True):
+    hasValidTxIns = all(validateTxIn(txIn, transaction, unspentTxOuts) for txIn in transaction.tx_ins)
+    if not hasValidTxIns:
         print('some of the txIns are invalid in tx: ' + transaction.id)
         return False
     totalTxInValues = map(lambda txIn: getTxInAmount(txIn, unspentTxOuts), transaction.tx_ins)
@@ -88,7 +127,6 @@ def validateCoinbaseTx(transaction, blockIndex):
         return False
     
     if getTransactionId(transaction) != transaction.id:
-        print('invalid coinbase tx id: ' + transaction.id)
         return False
     
     if len(transaction.tx_ins) != 1:
@@ -109,24 +147,35 @@ def validateCoinbaseTx(transaction, blockIndex):
     
     return True
 
-def find_utxo(a_unspent_tx_outs):
+def find_utxo(tx_in, a_unspent_tx_outs):
     for utxo in a_unspent_tx_outs:
         if utxo.txOutId == tx_in.txOutId and utxo.txOutIndex == tx_in.txOutIndex:
             return utxo
 
 def validateTxIn(txIn, transaction, unspentTxOuts):
-    referencedUTxOut = find_utxo(unspentTxOuts)
+    from salcoin_wallets import getPublicFromWallet
+
+    referencedUTxOut = find_utxo(txIn, unspentTxOuts)
     if referencedUTxOut is None:
-        print('referenced txOut not found: ' + json.dumps(txIn))
+        print('referenced txOut not found: ' + json.dumps(txIn.to_dict()))
         return False
         
     address = referencedUTxOut.address
-    key = SigningKey.from_string(bytes.fromhex(address), curve=SECP256k1)
-    validSignature = key.verify(bytes.fromhex(txIn.signature), transaction.id.encode('utf-8'))
-    if not validSignature:
-        print('invalid txIn signature: %s txId: %s address: %s', txIn.signature, transaction.id, referencedUTxOut.address)
+    try:
+        key = VerifyingKey.from_string(bytes.fromhex(address[4:]), curve=SECP256k1)
+        try:
+            validSignature = key.verify(bytes.fromhex(txIn.signature), transaction.id.encode())
+            if not validSignature:
+                print('invalid txIn signature: %s txId: %s address: %s', txIn.signature, transaction.id, referencedUTxOut.address)
+                return False
+            return True
+        except Exception as e:
+            print(f'Error during signature verification: {str(e)}')
+            return False
+
+    except Exception as e:
+        print('Invalid address (public key) format:', address)
         return False
-    return True
 
 def getTxInAmount(tx_in, a_unspent_tx_outs):
     referenced_utxo = findUnspentTxOut(tx_in.txOutId, tx_in.txOutIndex, a_unspent_tx_outs)
@@ -142,15 +191,9 @@ def findUnspentTxOut(transactionId, index, aUnspentTxOuts):
     return None
 
 def getCoinbaseTransaction(address, blockIndex):
-    txIn = TxIn()
-    txIn.signature = ''
-    txIn.txOutId = ''
-    txIn.txOutIndex = blockIndex
-
-    t = Transaction()
-    t.tx_ins = [txIn]
-    t.tx_outs = [TxOut(address, COINBASE_AMOUNT)]
-    t.id = getTransactionId(t)
+    txIn = TxIn('', blockIndex, '')
+    t = Transaction(0,[txIn],[TxOut(address, COINBASE_AMOUNT)])
+    t.setTxId(getTransactionId(t))
     return t
 
 
@@ -197,10 +240,6 @@ def processTransactions(aTransactions, aUnspentTxOuts, blockIndex):
         print('invalid block transactions')
         return None
     return updateUnspentTxOuts(aTransactions, aUnspentTxOuts)
-
-
-def toHexString(byteArray):
-    return ''.join([f'{byte & 0xFF:02x}' for byte in byteArray])
 
 def getPublicKey(privateKey):
     return SigningKey.from_string(bytes.fromhex(privateKey), curve=SECP256k1).verifying_key.to_string().hex()
@@ -258,15 +297,15 @@ def isValidTransactionStructure(transaction):
         return True
 
 def isValidAddress(address):
-    if len(address) != 130:
+    if len(address) != 132:
         print(address)
         print('invalid public key length')
         return False
     elif re.match('^[a-fA-F0-9]+$', address) is None:
         print('public key must contain only hex characters')
         return False
-    elif not address.startswith('04'):
-        print('public key must start with 04')
+    elif not address.startswith('0310'):
+        print('public key must start with 0310')
         return False
     return True
 

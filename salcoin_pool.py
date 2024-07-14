@@ -6,14 +6,16 @@ from itertools import chain
 transactionPool = []
 
 def getTransactionPool():
+    global transactionPool
     return deepcopy(transactionPool)
 
 def addToTransactionPool(tx, unspentTxOuts):
+    global transactionPool
     if not validateTransaction(tx, unspentTxOuts):
         raise Exception('Trying to add invalid tx to pool')
     if not isValidTxForPool(tx, transactionPool):
         raise Exception('Trying to add invalid tx to pool')
-    print('adding to txPool: %s', JSON.stringify(tx))
+    print('adding to txPool:',tx.to_dict())
     transactionPool.append(tx)
 
 def hasTxIn(txIn, unspentTxOuts):
@@ -23,15 +25,19 @@ def hasTxIn(txIn, unspentTxOuts):
     return False
 
 def updateTransactionPool(unspentTxOuts):
+    global transactionPool
     invalidTxs = []
     for tx in transactionPool:
-        for txIn in tx.txIns:
+        for txIn in tx.tx_ins:
             if not hasTxIn(txIn, unspentTxOuts):
                 invalidTxs.append(tx)
                 break
     if len(invalidTxs) > 0:
-        print('removing the following transactions from txPool: %s', JSON.stringify(invalidTxs))
-        transactionPool = [tx for tx in transactionPool if tx not in invalidTxs]
+        print('removing the following transactions from txPool:')
+        for tx in invalidTxs:
+            print(tx.to_dict())
+    transactionPool = [tx for tx in transactionPool if tx not in invalidTxs]
+
 
 def getTxPoolIns(aTransactionPool):
     return list(chain.from_iterable(tx.txIns for tx in aTransactionPool))
@@ -45,7 +51,7 @@ def isValidTxForPool(tx, aTransactionPool):
                 return True
         return False
     
-    for txIn in tx.txIns:
+    for txIn in tx.tx_ins:
         if containsTxIn(txPoolIns, txIn):
             print('txIn already found in the txPool')
             return False

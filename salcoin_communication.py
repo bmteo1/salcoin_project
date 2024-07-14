@@ -96,16 +96,18 @@ def queryAllMsg():
     return Message(MessageType.QUERY_ALL, None)
 
 def response_chain_msg():
-    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps(get_blockchain()))
+    from salcoin_block import getBlockchain
+    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps([block.to_dict() for block in getBlockchain()]))
 
 def responseLatestMsg():
-    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps([getLatestBlock()]))
+    from salcoin_block import getLatestBlock
+    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps(getLatestBlock().to_dict()))
 
 def queryTransactionPoolMsg():
     return Message(MessageType.QUERY_TRANSACTION_POOL, None)
 
 def responseTransactionPoolMsg():
-    return Message(MessageType.RESPONSE_TRANSACTION_POOL, json.dumps(getTransactionPool()))
+    return Message(MessageType.RESPONSE_TRANSACTION_POOL, json.dumps([tx.to_dict() for tx in getTransactionPool()]))
 
 async def initErrorHandler(ws):
     async def closeConnection():
@@ -138,13 +140,16 @@ def handleBlockchainResponse(received_blocks):
             print('Received blockchain is longer than current blockchain')
             replaceChain(received_blocks)
     else:
-        print('Received blockchain is not longer than received blockchain. Do nothing')
+        print('Received blockchain is not longer than received blockchain.')
 
 async def broadcastLatest():
-    broadcast(responseLatestMsg())
+    await broadcast(responseLatestMsg())
 
 def connectToPeers(new_peer):
-    asyncio.create_task(connect(new_peer))
+    try:
+        asyncio.run(connect(new_peer))
+    except:
+        asyncio.create_task(connect(new_peer))
 
 async def connect(new_peer):
     try:

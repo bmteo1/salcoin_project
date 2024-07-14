@@ -3,6 +3,7 @@ import time
 from Crypto.Hash import RIPEMD160
 from copy import deepcopy
 import math
+import asyncio
 from salcoin_communication import broadcastLatest, broadcastTransactionPool
 from salcoin_transaction import getCoinbaseTransaction, isValidAddress, processTransactions, Transaction, UnspentTxOut, TxIn, TxOut
 from salcoin_pool import addToTransactionPool, getTransactionPool, updateTransactionPool
@@ -27,23 +28,27 @@ class Block:
         ripemd160 = RIPEMD160.new()
         ripemd160.update(sha256_hash)
         return ripemd160.hexdigest()
+    
+    def to_dict(self):
+        return {
+            'index': self.index,
+            'previous_hash': self.previous_hash,
+            'timestamp': self.timestamp,
+            'data': [tx.to_dict() for tx in self.data],
+            'difficulty': self.difficulty,
+            'minterBalance': self.minterBalance,
+            'minterAddress': self.minterAddress,
+            'current_hash': self.current_hash
+        }
 
-# genesisTransaction = {
-#     'tx_ins': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
-#     'tx_outs': [{
-#         'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
-#         'amount': 50
-#     }],
-#     'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
-# }
 genesisTransaction = Transaction(
-    id =  '75205d1fe27602cddb09ca12487051ce20719a7a',
+    id =  '6e3b69a20fcbe95a662b991e1cd30869dc045260',
     tx_ins = [TxIn(signature="", txOutId='', txOutIndex=0)],
-    tx_outs = [TxOut(address='04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a', amount=50)]
+    tx_outs = [TxOut(address='0310bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a', amount=50)]
 )
 
 genesisBlock = Block(
-    0, '91a73664bc84c0baa1fc75ea6e4aa6d1d20c5df664c724e3159aefc2e1186627', int(time.time()), [genesisTransaction], 0, 0, "04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a"
+    0, '91a73664bc84c0baa1fc75ea6e4aa6d1d20c5df664c724e3159aefc2e1186627', int(time.time()), [genesisTransaction], 0, 0, "0310bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a"
 )
 
 mintingWithoutCoinIndex = 100
@@ -54,9 +59,10 @@ def getBlockchain():
     return blockchain
 
 def getUnspentTxOuts():
-    return  deepcopy(unspentTxOuts)
+    return deepcopy(unspentTxOuts)
 
 def setUnspentTxOuts(newUnspentTxOut):
+    global unspentTxOuts
     unspentTxOuts = newUnspentTxOut
 
 def getLatestBlock():
@@ -83,16 +89,22 @@ def getDifficulty(aBlockchain):
     else:
         return latestBlock.difficulty
 
-def getCurrentTimestamp():
-     return int(time.time())
-
 def generateRawNextBlock(blockData):
     previousBlock = getLatestBlock()
     difficulty = getDifficulty(getBlockchain())
     nextIndex = previousBlock.index + 1
+
+    print("blockData",blockData)
+
     newBlock = findBlock(nextIndex, previousBlock.current_hash, blockData, difficulty)
+
+    print("newBlock",newBlock.to_dict())
+    
     if addBlockToChain(newBlock):
-        broadcastLatest()
+        try:
+            asyncio.run(broadcastLatest())
+        except:
+            asyncio.create_task(broadcastLatest())
         return newBlock
     else:
         return None
@@ -102,7 +114,10 @@ def getMyUnspentTransactionOutputs():
 
 def generateNextBlock():
     coinbaseTx = getCoinbaseTransaction(getPublicFromWallet(), getLatestBlock().index + 1)
-    blockData = [coinbaseTx].concat(getTransactionPool())
+    blockData = []
+    blockData.append(coinbaseTx)
+    for tx in getTransactionPool():
+        blockData.append(tx)
     return generateRawNextBlock(blockData)
 
 def generatenextBlockWithTransaction(receiverAddress, amount):
@@ -115,13 +130,13 @@ def generatenextBlockWithTransaction(receiverAddress, amount):
     blockData = [coinbaseTx, tx]
     return generateRawNextBlock(blockData)
 
-def findBlock(index, previousHash, data, difficulty):
+def findBlock(index, previous_hash, data, difficulty):
     pastTime = 0
     while True:
         timestamp = int(time.time())
         if pastTime != timestamp:
-            if isBlockStakingValid(previousHash, getPublicFromWallet(), timestamp, getAccountBalance(), difficulty, index):
-                return Block(index, previousHash, data, timestamp, difficulty, getAccountBalance(), getPublicFromWallet())
+            if isBlockStakingValid(previous_hash, timestamp, getAccountBalance(), difficulty, index):
+                return Block(index, previous_hash, timestamp, data, difficulty, getAccountBalance(), getPublicFromWallet())
             pastTime = timestamp
 
 def getAccountBalance():
@@ -130,11 +145,11 @@ def getAccountBalance():
 def sendTransaction(address, amount):
     tx = createTransaction(address, amount, getPrivateFromWallet(), getUnspentTxOuts(), getTransactionPool())
     addToTransactionPool(tx, getUnspentTxOuts())
-    broadCastTransactionPool()
+    broadcastTransactionPool()
     return tx
 
-def getAccumulatedDifficulty(aBlockchain):
-    return sum([math.pow(2, block['difficulty']) for block in ablockchain])
+def getAccumulatedDifficulty(ablockchain):
+    return sum([math.pow(2, block.difficulty) for block in ablockchain])
 
 def isValidBlockStructure(block):
     return isinstance(block.index, int) and isinstance(block.previous_hash, str) and isinstance(block.data, str) and isinstance(block.current_hash, str) and isinstance(block.difficulty, int) and isinstance(block.minterBalance, int) and isinstance(block.minterAddress, str)
@@ -144,7 +159,7 @@ def isValidNewBlock(newBlock, previousBlock):
         print('invalid index')
         return False
     elif previousBlock.current_hash != newBlock.previous_hash:
-        print('invalid previoushash')
+        print('invalid previous_hash')
         return False
     elif not isValidTimestamp(newBlock, previousBlock):
         print('invalid timestamp')
@@ -154,7 +169,7 @@ def isValidNewBlock(newBlock, previousBlock):
     return True
 
 def isValidTimestamp(newBlock, previousBlock):
-    return ( previousBlock.timestamp - 60 < newBlock.timestamp ) and newBlock.timestamp - 60 < getCurrentTimestamp()
+    return ( previousBlock.timestamp - 60 < newBlock.timestamp ) and (newBlock.timestamp - 60 < int(time.time()))
 
 def hasValidHash(block):
     if not hashMatchesBlockContent(block):
@@ -166,7 +181,7 @@ def hasValidHash(block):
 
 def calculateHashForBlock(block):
     sha256 = hashlib.sha256()
-    sha256.update((str(block.index) + str(block.timestamp) + str(block.data) + str(block.previousHash)+ str(block.minterAddress)+str(block.minterBalance)+str(block.difficulty)).encode('utf-8'))
+    sha256.update((str(block.index) + str(block.timestamp) + str(block.data) + str(block.previous_hash)+ str(block.minterAddress)+str(block.minterBalance)+str(block.difficulty)).encode('utf-8'))
     sha256_hash = sha256.digest()
     ripemd160 = RIPEMD160.new()
     ripemd160.update(sha256_hash)
@@ -176,24 +191,30 @@ def hashMatchesBlockContent(block):
     blockHash = calculateHashForBlock(block)
     return blockHash == block.current_hash
 
-def isBlockStakingValid(prevhash, timestamp, balance, difficulty, index):
+def isBlockStakingValid(prevhash, timestamp, balance, difficulty, index, address=getPublicFromWallet()):
     difficulty = int(difficulty) + 1
     if int(index) <= mintingWithoutCoinIndex:
         balance = int(balance) + 1
     
-    balanceOverDifficulty = (Decimal(2) ** 256) * Decimal(balance) / Decimal(difficulty)
-    stakingHash_temp = RIPEMD160.new().update(hashlib.sha256().update((str(timestamp) + str(prevhash)+ str(address)).encode('utf-8')).digest()).hexdigest()
-    decimalStakingHash = Decimal(int(stakingHash_temp, 16))
+    balanceOverDifficulty = (float(2) ** 256) * float(balance) / float(difficulty)
+    sha256 = hashlib.sha256()
+    sha256.update((str(timestamp) + str(prevhash)+ str(address)).encode('utf-8'))
+    sha256_hash = sha256.digest()
+    ripemd160 = RIPEMD160.new()
+    ripemd160.update(sha256_hash)
+    stakingHash_temp = ripemd160.hexdigest()
+    decimalStakingHash = float(int(stakingHash_temp, 16))
 
     difference = balanceOverDifficulty - decimalStakingHash
     return difference >= 0
 
 def isValidChain(blockchainToValidate):
     print('isValidChain:')
-    print(json.dumps(blockchainToValidate))
+    for block in blockchainToValidate:
+        print(f'{block.to_dict()}')
 
     def isValidGenesis(block):
-        return json.dumps(block) == json.dumps(genesisBlock)
+        return block == genesisBlock
 
     if not isValidGenesis(blockchainToValidate[0]):
         return None
@@ -218,7 +239,7 @@ def addBlockToChain(newBlock):
         else:
             blockchain.append(newBlock)
             setUnspentTxOuts(retVal)
-            updateTransactionPool(unspentTxOuts)
+            updateTransactionPool(getUnspentTxOuts())
             return True
     return False
 
@@ -230,7 +251,7 @@ def replaceChain(newBlocks):
         blockchain = newBlocks
         setUnspentTxOuts(aUnspentTxOuts)
         updateTransactionPool(unspentTxOuts)
-        broadcastLatest()
+        asyncio.run(broadcastLatest())
     else:
         print('Received blockchain invalid')
 

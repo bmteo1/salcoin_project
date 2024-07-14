@@ -19,8 +19,9 @@ def getPrivateFromWallet():
 
 def getPublicFromWallet():
     privateKey = getPrivateFromWallet()
-    publicKey = sk.get_verifying_key().to_string().hex()
-    return publicKey
+    privateKey = SigningKey.from_string(bytes.fromhex(privateKey), curve=SECP256k1)
+    publicKey = privateKey.get_verifying_key().to_string().hex()
+    return '0310'+publicKey
 
 def generatePrivateKey():
     sk = SigningKey.generate(curve=SECP256k1)
@@ -43,6 +44,8 @@ def getBalance(address, unspentTxOuts):
     return sum([uTxO.amount for uTxO in findUnspentTxOuts(address, unspentTxOuts)])
 
 def findUnspentTxOuts(ownerAddress, unspentTxOuts):
+    if unspentTxOuts is None:
+        return []
     return [uTxO for uTxO in unspentTxOuts if uTxO.address == ownerAddress]
 
 def findTxOutsForAmount(amount, myUnspentTxOuts):
@@ -53,9 +56,9 @@ def findTxOutsForAmount(amount, myUnspentTxOuts):
         currentAmount += myUnspentTxOut.amount
         if currentAmount >= amount:
             leftOverAmount = currentAmount - amount
-            return {'includedUnspentTxOuts': includedUnspentTxOuts, 'leftOverAmount': leftOverAmount}
+            return (includedUnspentTxOuts, leftOverAmount)
 
-    eMsg = f'Cannot create transaction from the available unspent transaction outputs. Required amount: {amount}. Available unspentTxOuts: {json.dumps(myUnspentTxOuts)}'
+    eMsg = f'Cannot create transaction from the available unspent transaction outputs. Required amount: {amount}. Available unspentTxOuts: {json.dumps([i.to_dict() for i in myUnspentTxOuts])}'
     raise ValueError(eMsg)
 
 def createTxOuts(receiverAddress, myAddress, amount, leftOverAmount):
@@ -67,7 +70,7 @@ def createTxOuts(receiverAddress, myAddress, amount, leftOverAmount):
         return [txOut1, leftOverTx]
 
 def filterTxPoolTxs(unspentTxOuts, transactionPool):
-    txIns = [tx.txIns for tx in transactionPool]
+    txIns = [tx.tx_ins for tx in transactionPool]
     removable = []
     for unspentTxOut in unspentTxOuts:
         txIn = next((aTxIn for aTxIn in txIns if aTxIn.txOutIndex == unspentTxOut.txOutIndex and aTxIn.txOutId == unspentTxOut.txOutId), None)
@@ -81,31 +84,25 @@ def filterTxPoolTxs(unspentTxOuts, transactionPool):
 def createTransaction(receiverAddress, amount, privateKey,unspentTxOuts, txPool):
     myAddress = getPublicFromWallet()
     myUnspentTxOutsA = [uTxO for uTxO in unspentTxOuts if uTxO.address == myAddress]
-    myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool)
+    myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool)    
     includedUnspentTxOuts, leftOverAmount = findTxOutsForAmount(amount, myUnspentTxOuts)
-    unsignedTxIns = [TxIn(txOut.txOutId, txOut.txOutIndex) for txOut in includedUnspentTxOuts]
-
-    tx = Transaction(unsignedTxIns, createTxOuts(receiverAddress, myAddress, amount, leftOverAmount))
+    unsignedTxIns = [TxIn(txOut.txOutId, txOut.txOutIndex,'') for txOut in includedUnspentTxOuts]
+    tx = Transaction(tx_ins=unsignedTxIns, tx_outs=createTxOuts(receiverAddress, myAddress, amount, leftOverAmount))
     tx.id = getTransactionId(tx)
-    tx.txIns = [signTxIn(tx, index, privateKey, unspentTxOuts) for index, txIn in enumerate(tx.txIns)]
+    for index, txIn in enumerate(tx.tx_ins):
+        tx.tx_ins[index].signature = signTxIn(tx, index, privateKey, unspentTxOuts)
     return tx
 
-def getTransactionId(transaction):
-    txInContent = ''.join([txIn.txOutId + str(txIn.txOutIndex) for txIn in transaction.txIns])
-    txOutContent = ''.join([txOut.address + str(txOut.amount) for txOut in transaction.txOuts])
-    return RIPEMD160.new().update(hashlib.sha256((txInContent + txOutContent).encode()).digest()).hexdigest()
-
 def signTxIn(transaction, txInIndex, privateKey, unspentTxOuts):
-    txIn = transaction.txIns[txInIndex]
+    txIn = transaction.tx_ins[txInIndex]
     dataToSign = transaction.id
     referencedUnspentTxOut = findUnspentTxOutByTxIn(txIn, unspentTxOuts)
 
     if referencedUnspentTxOut is None:
-        raise ValueError(f'Referenced txOut not found: {json.dumps(txIn)}')
+        raise ValueError(f'Referenced txOut not found: {json.dumps(txIn.to_dict())}')
 
     privateKey = SigningKey.from_string(bytes.fromhex(privateKey), curve=SECP256k1)
     signature = privateKey.sign(dataToSign.encode())
-
     return signature.hex()
 
 def findUnspentTxOutByTxIn(txIn, unspentTxOuts):
