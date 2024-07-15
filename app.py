@@ -1,133 +1,131 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi.responses import JSONResponse
+from fastapi.websockets import WebSocketDisconnect
 from salcoin_block import *
 from salcoin_communication import connectToPeers, getSocket, initP2PServer
 from salcoin_transaction import UnspentTxOut, Transaction, getTransactionId
 from salcoin_pool import getTransactionPool
 from salcoin_wallets import getPublicFromWallet, initWallet
-import argparse
 import asyncio
-import threading
+import os
+import uvicorn
+from pydantic import BaseModel
 
+app = FastAPI()
 
-app = Flask(__name__)
+class Item(BaseModel):
+    address: str
+    amount: int
 
-initWallet()
+class Peer(BaseModel):
+    peer: int
 
-@app.route('/blocks', methods=['GET'])
-def blocks():
-    return jsonify([i.to_dict() for i in getBlockchain()])
+@app.on_event("startup")
+async def startup_event():
+    await initP2PServer(int(os.getenv('UVICORN_PORT'))+1)
+    initWallet()
 
-@app.route('/block/<string:hash>', methods=['GET'])
-def get_block(hash):
+@app.get('/blocks', response_model=list[dict])
+async def blocks():
+    return [i.to_dict() for i in getBlockchain()]
+
+@app.get('/block/{hash}', response_model=dict)
+async def get_block(hash: str):
     blockchain = getBlockchain()
     block = next((b for b in blockchain if b.current_hash == hash), None)
     if block:
-        return jsonify(block.to_dict()), 200
+        return block.to_dict()
     else:
-        return jsonify({'message': 'Block not found'}), 404
+        raise HTTPException(status_code=404, detail="Block not found")
 
-@app.route('/transaction/<id>', methods=['GET'])
-def get_transaction(id):
+@app.get('/transaction/{id}', response_model=dict)
+async def get_transaction(id: str):
     blockchain = getBlockchain()
     tx = next((tx for b in blockchain for tx in b.data if tx.id == id), None)
     if tx:
-        return jsonify(tx.to_dict()), 200
+        return tx.to_dict()
     else:
-        return jsonify({'message': 'Transaction not found'}), 404
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
-@app.route('/address/<address>', methods=['GET'])
-def get_unspent_tx_outs(address):
+@app.get('/address/{address}', response_model=dict)
+async def get_unspent_tx_outs(address: str):
     unspent_tx_outs = getUnspentTxOuts()
-    if not unspent_tx_outs:
-        return jsonify({'error': 'No unspent transactions'}), 404
     filtered_tx_outs = [uTxO.to_dict() for uTxO in unspent_tx_outs if uTxO.address == address]
-    return jsonify({'unspentTxOuts': filtered_tx_outs}), 200
+    if not filtered_tx_outs:
+        raise HTTPException(status_code=404, detail="No unspent transactions found")
+    return {'unspentTxOuts': filtered_tx_outs}
 
-@app.route('/unspentTransactionOutputs', methods=['GET'])
-def get_unspent_transaction_outputs():
+@app.get('/unspentTransactionOutputs', response_model=list[dict])
+async def get_unspent_transaction_outputs():
     unspent_tx_outs = getUnspentTxOuts()
     if not unspent_tx_outs:
-        return jsonify({'error': 'No unspent transactions'}), 404
-    return jsonify([i.to_dict() for i in unspent_tx_outs]), 200
+        raise HTTPException(status_code=404, detail="No unspent transactions found")
+    return [i.to_dict() for i in unspent_tx_outs]
 
-@app.route('/myUnspentTransactionOutputs', methods=['GET'])
-def get_my_unspent_transaction_outputs():
+@app.get('/myUnspentTransactionOutputs', response_model=list[dict])
+async def get_my_unspent_transaction_outputs():
     my_unspent_tx_outs = getMyUnspentTransactionOutputs()
     if not my_unspent_tx_outs:
-        return jsonify({'error': 'No unspent transactions'}), 404
-    return jsonify([i.to_dict() for i  in my_unspent_tx_outs]), 200
+        raise HTTPException(status_code=404, detail="No unspent transactions found")
+    return [i.to_dict() for i in my_unspent_tx_outs]
 
-@app.route('/mintBlock', methods=['POST'])
-def mint_block():
-    new_block = generateNextBlock()
+@app.post('/mintBlock', response_model=dict)
+async def mint_block():
+    new_block = await generateNextBlock()
     if new_block:
-        return jsonify(new_block.to_dict()), 200
+        return new_block.to_dict()
     else:
-        return jsonify({'error': 'could not generate block'}), 400
+        raise HTTPException(status_code=400, detail="Could not generate block")
 
-@app.route('/balance', methods=['GET'])
-def get_balance():
+@app.get('/balance', response_model=dict)
+async def get_balance():
     balance = getAccountBalance()
-    return jsonify({'balance': balance}), 200
+    return {'balance': balance}
 
-@app.route('/address', methods=['GET'])
-def get_address():
+@app.get('/address', response_model=dict)
+async def get_address():
     address = getPublicFromWallet()
-    return jsonify({'address': address}), 200
+    return {'address': address}
 
-@app.route('/mintTransaction', methods=['POST'])
-def mint_transaction():
-    data = request.get_json()
-    if not data or 'address' not in data or 'amount' not in data:
-        return jsonify({'error': 'invalid address or amount'}), 400
-    
-    address = data['address']
-    amount = int(data['amount'])
+@app.post('/mintTransaction', response_model=dict)
+async def mint_transaction(item: Item):
     try:
-        resp = generatenextBlockWithTransaction(address, amount)
-        return jsonify(resp.to_dict()), 200
+        resp = await generatenextBlockWithTransaction(item.address, item.amount)
+        return resp.to_dict()
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        raise HTTPException(status_code=400, detail=str(e))
 
-@app.route('/sendTransaction', methods=['POST'])
-def send_transaction():
-    data = request.get_json()
-    if not data or 'address' not in data or 'amount' not in data:
-        return jsonify({'error': 'invalid address or amount'}), 400
-    
-    address = data['address']
-    amount = int(data['amount'])
+@app.post('/sendTransaction', response_model=dict)
+async def send_transaction(item: Item):
     try:
-        resp = sendTransaction(address, amount)
-        return jsonify(resp.to_dict()), 200
+        resp = await sendTransaction(item.address, item.amount)
+        return resp.to_dict()
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        raise HTTPException(status_code=400, detail=str(e))
 
-@app.route('/transactionPool', methods=['GET'])
-def get_transaction_pool():
+@app.get('/transactionPool', response_model=list[dict])
+async def get_transaction_pool():
     transaction_pool = getTransactionPool()
-    return jsonify([i.to_dict() for i in transaction_pool]), 200
+    return [i.to_dict() for i in transaction_pool]
 
-@app.route('/peers', methods=['GET'])
-def get_peers():
-    sockets = asyncio.run(getSocket())
-    peers = [f"{s._socket.getpeername()[0]}:{s._socket.getpeername()[1]}" for s in sockets]
-    return jsonify(peers), 200
+@app.get('/peers', response_model=list[str])
+async def get_peers():
+    sockets = await getSocket()
+    peers = [f"{s.remote_address[0]}:{s.remote_address[1]}" for s in sockets]
+    return peers
 
-@app.route('/addPeer', methods=['POST'])
-def add_peer():
-    data = request.get_json()
-    if not data or 'peer' not in data:
-        return jsonify({'error': 'peer parameter is missing'}), 400
-    
-    peer = data['peer']
-    initP2PServer(peer)
-    asyncio.run(connectToPeers(peer))
-    return jsonify({'message': 'Peer added successfully'}), 200
 
-@app.route('/stop', methods=['POST'])
+@app.post('/addPeer', response_model=dict)
+async def add_peer(item:Peer):
+    try:
+        await connectToPeers(item.peer)
+        return {'message': 'Peer added successfully'}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post('/stop', response_model=dict)
 def stop_server():
     exit(0)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    uvicorn.run(app, host="0.0.0.0", debug=True)

@@ -49,28 +49,24 @@ async def initMessageHandler(ws):
     from salcoin_block import handleReceivedTransaction
     async for data in ws:
         try:
-            print(data)
             message = await jsonToObject(data)
             if message is None:
                 print(f'Could not parse received JSON message: {data}')
                 continue
-
-            print(f'Received message: {json.dumps(message)}')
-
             if message['type'] == MessageType.QUERY_LATEST:
                 await write(ws, responseLatestMsg())
             elif message['type'] == MessageType.QUERY_ALL:
                 await write(ws, response_chain_msg())
             elif message['type'] == MessageType.RESPONSE_BLOCKCHAIN:
-                received_blocks = jsonToObject(message['data'])
+                received_blocks = await jsonToObject(message['data'])
                 if received_blocks is None:
                     print(f'Invalid blocks received: {message["data"]}')
                     continue
-                handleBlockchainResponse(received_blocks)
+                await handleBlockchainResponse(received_blocks)
             elif message['type'] == MessageType.QUERY_TRANSACTION_POOL:
                 await write(ws, responseTransactionPoolMsg())
             elif message['type'] == MessageType.RESPONSE_TRANSACTION_POOL:
-                received_transactions = jsonToObject(message['data'])
+                received_transactions = await jsonToObject(message['data'])
                 if received_transactions is None:
                     print(f'Invalid transaction received: {message["data"]}')
                     continue
@@ -103,7 +99,7 @@ def response_chain_msg():
 
 def responseLatestMsg():
     from salcoin_block import getLatestBlock
-    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps(getLatestBlock().to_dict()))
+    return Message(MessageType.RESPONSE_BLOCKCHAIN, json.dumps([getLatestBlock().to_dict()]))
 
 def queryTransactionPoolMsg():
     return Message(MessageType.QUERY_TRANSACTION_POOL, None)
@@ -118,29 +114,32 @@ async def initErrorHandler(ws):
     ws.on('close', closeConnection)
     ws.on('error', closeConnection)
 
-def handleBlockchainResponse(received_blocks):
-    from salcoin_block import getLatestBlock, isValidBlockStructure, addBlockToChain, replaceChain
+async def handleBlockchainResponse(received_blocks):
+    from salcoin_block import getLatestBlock, isValidBlockStructure, addBlockToChain, replaceChain, blockFromDict
     if len(received_blocks) == 0:
         print('Received block chain size of 0')
         return
 
-    latestBlockReceived = received_blocks[-1]
+    latestBlockReceived = blockFromDict(received_blocks[-1])
     if not isValidBlockStructure(latestBlockReceived):
         print('Block structure not valid')
         return
 
     latestBlockHeld = getLatestBlock()
+
     if latestBlockReceived.index > latestBlockHeld.index:
         print(f'Blockchain possibly behind. We got: {latestBlockHeld.index} Peer got: {latestBlockReceived.index}')
-        if latestBlockHeld.hash == latestBlockReceived.previous_hash:
+        if latestBlockHeld.current_hash == latestBlockReceived.previous_hash:
+            print('Appending received block to local chain')
             if addBlockToChain(latestBlockReceived):
-                broadcast(responseLatestMsg())
+                await broadcast(responseLatestMsg())
         elif len(received_blocks) == 1:
             print('We have to query the chain from our peer')
-            broadcast(queryAllMsg())
+            await broadcast(queryAllMsg())
         else:
             print('Received blockchain is longer than current blockchain')
-            replaceChain(received_blocks)
+            receivedBlocks = [blockFromDict(block) for block in received_blocks]
+            await replaceChain(receivedBlocks)
     else:
         print('Received blockchain is not longer than received blockchain.')
 
@@ -155,7 +154,6 @@ async def connect(new_peer):
     try:
         async with websockets.connect(new_peer) as ws:
             await initConnection(ws)
-        print("Connected to peer: ", new_peer)
     except Exception as e:
         print(f'Connection failed: {e}')
 

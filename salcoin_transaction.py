@@ -3,6 +3,7 @@ import re
 from ecdsa import SigningKey, SECP256k1, VerifyingKey
 from collections import Counter
 from Crypto.Hash import RIPEMD160
+import json 
 
 COINBASE_AMOUNT = 50
 

@@ -6,7 +6,6 @@ from itertools import chain
 transactionPool = []
 
 def getTransactionPool():
-    global transactionPool
     return deepcopy(transactionPool)
 
 def addToTransactionPool(tx, unspentTxOuts):
@@ -40,7 +39,7 @@ def updateTransactionPool(unspentTxOuts):
 
 
 def getTxPoolIns(aTransactionPool):
-    return list(chain.from_iterable(tx.txIns for tx in aTransactionPool))
+    return list(chain.from_iterable(tx.tx_ins for tx in aTransactionPool))
 
 def isValidTxForPool(tx, aTransactionPool):
     txPoolIns = getTxPoolIns(aTransactionPool)

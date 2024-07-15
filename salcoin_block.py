@@ -23,7 +23,7 @@ class Block:
     
     def hash_block(self):
         sha256 = hashlib.sha256()
-        sha256.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash)+ str(self.minterAddress)+str(self.minterBalance)+str(self.difficulty)).encode('utf-8'))
+        sha256.update((str(self.index) + str(self.timestamp) + str([tx.to_dict() for tx in self.data]) + str(self.previous_hash)+ str(self.minterAddress)+str(self.minterBalance)+str(self.difficulty)).encode('utf-8'))
         sha256_hash = sha256.digest()
         ripemd160 = RIPEMD160.new()
         ripemd160.update(sha256_hash)
@@ -89,17 +89,14 @@ def getDifficulty(aBlockchain):
     else:
         return latestBlock.difficulty
 
-def generateRawNextBlock(blockData):
+async def generateRawNextBlock(blockData):
     previousBlock = getLatestBlock()
     difficulty = getDifficulty(getBlockchain())
     nextIndex = previousBlock.index + 1
     newBlock = findBlock(nextIndex, previousBlock.current_hash, blockData, difficulty)
 
     if addBlockToChain(newBlock):
-        try:
-            asyncio.run(broadcastLatest())
-        except:
-            asyncio.create_task(broadcastLatest())
+        await broadcastLatest()
         return newBlock
     else:
         return None
@@ -107,15 +104,16 @@ def generateRawNextBlock(blockData):
 def getMyUnspentTransactionOutputs():
     return findUnspentTxOuts(getPublicFromWallet(), getUnspentTxOuts())
 
-def generateNextBlock():
+async def generateNextBlock():
     coinbaseTx = getCoinbaseTransaction(getPublicFromWallet(), getLatestBlock().index + 1)
     blockData = []
     blockData.append(coinbaseTx)
     for tx in getTransactionPool():
         blockData.append(tx)
-    return generateRawNextBlock(blockData)
+    newBlock = await generateRawNextBlock(blockData)
+    return newBlock
 
-def generatenextBlockWithTransaction(receiverAddress, amount):
+async def generatenextBlockWithTransaction(receiverAddress, amount):
     if not isValidAddress(receiverAddress):
         raise Exception('invalid address')
     if not isinstance(amount, int):
@@ -123,7 +121,8 @@ def generatenextBlockWithTransaction(receiverAddress, amount):
     coinbaseTx = getCoinbaseTransaction(getPublicFromWallet(), getLatestBlock().index + 1)
     tx = createTransaction(receiverAddress, amount, getPrivateFromWallet(), getUnspentTxOuts(), getTransactionPool())
     blockData = [coinbaseTx, tx]
-    return generateRawNextBlock(blockData)
+    newBlock = await generateRawNextBlock(blockData)
+    return newBlock
 
 def findBlock(index, previous_hash, data, difficulty):
     pastTime = 0
@@ -137,17 +136,17 @@ def findBlock(index, previous_hash, data, difficulty):
 def getAccountBalance():
     return getBalance(getPublicFromWallet(), getUnspentTxOuts())
 
-def sendTransaction(address, amount):
+async def sendTransaction(address, amount):
     tx = createTransaction(address, amount, getPrivateFromWallet(), getUnspentTxOuts(), getTransactionPool())
     addToTransactionPool(tx, getUnspentTxOuts())
-    broadcastTransactionPool()
+    await broadcastTransactionPool()
     return tx
 
 def getAccumulatedDifficulty(ablockchain):
     return sum([math.pow(2, block.difficulty) for block in ablockchain])
 
 def isValidBlockStructure(block):
-    return isinstance(block.index, int) and isinstance(block.previous_hash, str) and isinstance(block.data, str) and isinstance(block.current_hash, str) and isinstance(block.difficulty, int) and isinstance(block.minterBalance, int) and isinstance(block.minterAddress, str)
+    return isinstance(block.index, int) and isinstance(block.previous_hash, str) and isinstance(block.data, list) and isinstance(block.data[0], Transaction) and isinstance(block.current_hash, str) and isinstance(block.difficulty, int) and isinstance(block.minterBalance, int) and isinstance(block.minterAddress, str)
 
 def isValidNewBlock(newBlock, previousBlock):
     if previousBlock.index + 1 != newBlock.index:
@@ -176,7 +175,7 @@ def hasValidHash(block):
 
 def calculateHashForBlock(block):
     sha256 = hashlib.sha256()
-    sha256.update((str(block.index) + str(block.timestamp) + str(block.data) + str(block.previous_hash)+ str(block.minterAddress)+str(block.minterBalance)+str(block.difficulty)).encode('utf-8'))
+    sha256.update((str(block.index) + str(block.timestamp) + str([tx.to_dict() for tx in block.data]) + str(block.previous_hash)+ str(block.minterAddress)+str(block.minterBalance)+str(block.difficulty)).encode('utf-8'))
     sha256_hash = sha256.digest()
     ripemd160 = RIPEMD160.new()
     ripemd160.update(sha256_hash)
@@ -204,10 +203,6 @@ def isBlockStakingValid(prevhash, timestamp, balance, difficulty, index, address
     return difference >= 0
 
 def isValidChain(blockchainToValidate):
-    print('isValidChain:')
-    for block in blockchainToValidate:
-        print(f'{block.to_dict()}')
-
     def isValidGenesis(block):
         return block == genesisBlock
 
@@ -238,17 +233,34 @@ def addBlockToChain(newBlock):
             return True
     return False
 
-def replaceChain(newBlocks):
+async def replaceChain(newBlocks):
     aUnspentTxOuts = isValidChain(newBlocks)
     validChain = aUnspentTxOuts != None
+    print("replace chain")
+    print(validChain)
+    print(aUnspentTxOuts)
     if validChain and getAccumulatedDifficulty(newBlocks) > getAccumulatedDifficulty(getBlockchain()):
         print('Received blockchain is valid. Replacing current blockchain with received blockchain')
         blockchain = newBlocks
         setUnspentTxOuts(aUnspentTxOuts)
         updateTransactionPool(unspentTxOuts)
-        asyncio.run(broadcastLatest())
+        await broadcastLatest()
     else:
         print('Received blockchain invalid')
 
+def txnFromDict(i):
+    tx_ins = [TxIn(txIn['txOutId'], txIn['txOutIndex'], txIn['signature']) for txIn in i['tx_ins']]
+    tx_outs = [TxOut(txOut['address'], txOut['amount']) for txOut in i['tx_outs']]
+    return Transaction(i['id'], tx_ins, tx_outs)
+
+def blockFromDict(msg):
+    data = msg['data']
+    for j,i in enumerate(data):
+        data[j] = txnFromDict(i)
+    return Block(msg['index'], msg['previous_hash'], msg['timestamp'], data, msg['difficulty'], msg['minterBalance'], msg['minterAddress'])
+
+
 def handleReceivedTransaction(transaction):
+    #transaction is coming as a dictionary -> convert to transaction object
+    transaction = txnFromDict(transaction)
     addToTransactionPool(transaction, getUnspentTxOuts())
