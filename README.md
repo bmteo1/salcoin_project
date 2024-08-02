@@ -34,15 +34,15 @@ To install and run SALCoin, follow these steps:
 1. **Clone the repository:**
 
    ```sh
-   git clone https://github.com/yourusername/salcoin.git
+   git clone https://github.com/SalientPharaoh/SALCoin.git
    cd salcoin
    ```
 
 2. **Create and activate a virtual environment:**
 
    ```sh
-   git clone https://github.com/yourusername/salcoin.git
-   cd salcoin
+   python3 -m venv venv
+   source venv/bin/activate
    ```
 
 3. **Install the required dependencies:**
