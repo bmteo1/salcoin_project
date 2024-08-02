@@ -27,7 +27,7 @@ class Item(BaseModel):
     amount: int
 
 class Peer(BaseModel):
-    peer: int
+    peer: str
 
 @app.on_event("startup")
 async def startup_event():

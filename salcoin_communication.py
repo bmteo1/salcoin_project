@@ -147,7 +147,7 @@ async def broadcastLatest():
     await broadcast(responseLatestMsg())
 
 async def connectToPeers(new_peer):
-    peer_url = f'ws://localhost:{new_peer}'
+    peer_url = f'ws://{new_peer}'
     asyncio.create_task(connect(peer_url))
 
 async def connect(new_peer):
