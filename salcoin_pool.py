@@ -6,7 +6,7 @@ from itertools import chain
 transactionPool = []
 
 def getTransactionPool():
-    return deepcopy(transactionPool)
+    return transactionPool
 
 def addToTransactionPool(tx, unspentTxOuts):
     global transactionPool

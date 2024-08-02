@@ -70,25 +70,28 @@ def createTxOuts(receiverAddress, myAddress, amount, leftOverAmount):
         return [txOut1, leftOverTx]
 
 def filterTxPoolTxs(unspentTxOuts, transactionPool):
-    txIns = [tx.tx_ins for tx in transactionPool]
+    print(f'Unspent transaction outputs: {unspentTxOuts[0].to_dict()}')
+    txIns = [txIn for tx in transactionPool for txIn in tx.tx_ins]
     removable = []
+    
     for unspentTxOut in unspentTxOuts:
         txIn = next((aTxIn for aTxIn in txIns if aTxIn.txOutIndex == unspentTxOut.txOutIndex and aTxIn.txOutId == unspentTxOut.txOutId), None)
-        if txIn is None:
-            pass
-        else:
+        if txIn:
             removable.append(unspentTxOut)
-
-    return [uTxO for uTxO in unspentTxOuts if uTxO not in removable]
+    filtered_utxos = [utxo for utxo in unspentTxOuts if utxo not in removable]
+    print(f'Filtered UTXOs: {filtered_utxos}')
+    return filtered_utxos
 
 def createTransaction(receiverAddress, amount, privateKey,unspentTxOuts, txPool):
     myAddress = getPublicFromWallet()
     myUnspentTxOutsA = [uTxO for uTxO in unspentTxOuts if uTxO.address == myAddress]
-    myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool)    
+    myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool) 
     includedUnspentTxOuts, leftOverAmount = findTxOutsForAmount(amount, myUnspentTxOuts)
+
     unsignedTxIns = [TxIn(txOut.txOutId, txOut.txOutIndex,'') for txOut in includedUnspentTxOuts]
     tx = Transaction(tx_ins=unsignedTxIns, tx_outs=createTxOuts(receiverAddress, myAddress, amount, leftOverAmount))
     tx.id = getTransactionId(tx)
+    
     for index, txIn in enumerate(tx.tx_ins):
         tx.tx_ins[index].signature = signTxIn(tx, index, privateKey, unspentTxOuts)
     return tx

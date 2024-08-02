@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from salcoin_block import *
 from salcoin_communication import connectToPeers, getSocket, initP2PServer
 from salcoin_transaction import UnspentTxOut, Transaction, getTransactionId
@@ -11,7 +12,15 @@ import os
 import uvicorn
 from pydantic import BaseModel
 
+
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class Item(BaseModel):
     address: str
@@ -28,6 +37,11 @@ async def startup_event():
 @app.get('/blocks', response_model=list[dict])
 async def blocks():
     return [i.to_dict() for i in getBlockchain()]
+
+@app.get('/latestBlock', response_model=dict)
+async def blocks():
+    block = getLatestBlock()
+    return block.to_dict()
 
 @app.get('/block/{hash}', response_model=dict)
 async def get_block(hash: str):
@@ -101,6 +115,7 @@ async def send_transaction(item: Item):
         resp = await sendTransaction(item.address, item.amount)
         return resp.to_dict()
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get('/transactionPool', response_model=list[dict])

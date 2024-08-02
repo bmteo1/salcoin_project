@@ -68,11 +68,11 @@ def setUnspentTxOuts(newUnspentTxOut):
 def getLatestBlock():
     return blockchain[-1]
 
-LOCK_GENERATION_INTERVAL= 10
+BLOCK_GENERATION_INTERVAL= 10
 DIFFICULTY_ADJUSTMENT_INTERVAL = 10
 
 def getAdjustedDifficulty(latestBlock, aBlockchain):
-    prevAdjustmentBlock = aBlockchain[blockchain.length - DIFFICULTY_ADJUSTMENT_INTERVAL]
+    prevAdjustmentBlock = aBlockchain[len(blockchain) - DIFFICULTY_ADJUSTMENT_INTERVAL]
     timeExpected = BLOCK_GENERATION_INTERVAL * DIFFICULTY_ADJUSTMENT_INTERVAL
     timeTaken = latestBlock.timestamp - prevAdjustmentBlock.timestamp
     if timeTaken < timeExpected / 2:
