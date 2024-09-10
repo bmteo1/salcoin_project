@@ -65,6 +65,10 @@ def setUnspentTxOuts(newUnspentTxOut):
     global unspentTxOuts
     unspentTxOuts = newUnspentTxOut
 
+def setBlockchain(newBlocks):
+    global blockchain
+    blockchain = newBlocks
+
 def getLatestBlock():
     return blockchain[-1]
 
@@ -204,13 +208,13 @@ def isBlockStakingValid(prevhash, timestamp, balance, difficulty, index, address
 
 def isValidChain(blockchainToValidate):
     def isValidGenesis(block):
-        return block == genesisBlock
+        return block.to_dict() == genesisBlock.to_dict()
 
     if not isValidGenesis(blockchainToValidate[0]):
         return None
 
     aUnspentTxOuts = []
-    for i in range(0, len(blockchainToValidate)):
+    for i in range(len(blockchainToValidate)):
         currentBlock = blockchainToValidate[i]
         if i != 0 and not isValidNewBlock(blockchainToValidate[i], blockchainToValidate[i - 1]):
             return None
@@ -236,12 +240,10 @@ def addBlockToChain(newBlock):
 async def replaceChain(newBlocks):
     aUnspentTxOuts = isValidChain(newBlocks)
     validChain = aUnspentTxOuts != None
-    print("replace chain")
-    print(validChain)
     print(aUnspentTxOuts)
     if validChain and getAccumulatedDifficulty(newBlocks) > getAccumulatedDifficulty(getBlockchain()):
         print('Received blockchain is valid. Replacing current blockchain with received blockchain')
-        blockchain = newBlocks
+        setBlockchain(newBlocks)
         setUnspentTxOuts(aUnspentTxOuts)
         updateTransactionPool(unspentTxOuts)
         await broadcastLatest()
@@ -254,11 +256,10 @@ def txnFromDict(i):
     return Transaction(i['id'], tx_ins, tx_outs)
 
 def blockFromDict(msg):
-    data = msg['data']
-    for j,i in enumerate(data):
-        data[j] = txnFromDict(i)
+    data = []
+    for i in msg['data']:
+        data.append(txnFromDict(i))
     return Block(msg['index'], msg['previous_hash'], msg['timestamp'], data, msg['difficulty'], msg['minterBalance'], msg['minterAddress'])
-
 
 def handleReceivedTransaction(transaction):
     #transaction is coming as a dictionary -> convert to transaction object

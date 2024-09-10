@@ -121,6 +121,7 @@ async def handleBlockchainResponse(received_blocks):
         return
 
     latestBlockReceived = blockFromDict(received_blocks[-1])
+
     if not isValidBlockStructure(latestBlockReceived):
         print('Block structure not valid')
         return
@@ -147,7 +148,7 @@ async def broadcastLatest():
     await broadcast(responseLatestMsg())
 
 async def connectToPeers(new_peer):
-    peer_url = f'ws://{new_peer}'
+    peer_url = f'ws://127.0.0.1:{new_peer}'
     asyncio.create_task(connect(peer_url))
 
 async def connect(new_peer):
