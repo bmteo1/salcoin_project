@@ -145,3 +145,4 @@ def test_block_validation():
 
 if __name__ == "__main__":
     test_block_validation()
+

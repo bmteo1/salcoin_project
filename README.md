@@ -1,10 +1,10 @@
-# SALCoin
+# Salcoin
 
-SALCoin is a Proof of Stake (PoS) consensus-based blockchain network written in Python. This project aims to provide a python based implementaion of PoS blockchain network with features like explorer, transaction management and user wallet management.
+Salcoin is a Proof of Stake (PoS) consensus-based blockchain network written in Python. This project aims to provide a python based implementaion of PoS blockchain network with features like explorer, transaction management and user wallet management.
 
 ## Table of Contents
 
-- [SALCoin](#salcoin)
+- [Salcoin](#salcoin)
   - [Table of Contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Features](#features)
@@ -17,7 +17,7 @@ SALCoin is a Proof of Stake (PoS) consensus-based blockchain network written in 
 
 ## Introduction
 
-SALCoin is designed to understand the concept of blockchain technology, including transaction handling, consensus mechanisms, peer-to-peer communication, and wallet management. The network uses Proof of Stake for its consensus, providing an efficient and secure method of maintaining the blockchain.
+Salcoin is designed to understand the concept of blockchain technology, including transaction handling, consensus mechanisms, peer-to-peer communication, and wallet management. The network uses Proof of Stake for its consensus, providing an efficient and secure method of maintaining the blockchain.
 
 ## Features
 
@@ -29,7 +29,7 @@ SALCoin is designed to understand the concept of blockchain technology, includin
 
 ## Installation
 
-To install and run SALCoin, follow these steps:
+To install and run Salcoin, follow these steps:
 
 1. **Clone the repository:**
 
@@ -71,7 +71,7 @@ To run the blockchain node, run the following commands:
 
 ### API Endpoints
 
-SALCoin provides a set of API endpoints to interact with the blockchain network. Below is a summary of the available endpoints:
+Salcoin provides a set of API endpoints to interact with the blockchain network. Below is a summary of the available endpoints:
 
 - Get All Blocks: GET /blocks
 - Get Latest Block: GET /latestBlock

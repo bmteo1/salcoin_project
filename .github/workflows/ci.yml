@@ -1,0 +1,33 @@
+name: CI Pipeline
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checar código
+      uses: actions/checkout@v2
+
+    - name: Configurar Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Instalar dependências
+      run: |
+        python -m venv venv
+        . venv/bin/activate
+        pip install -r requirements.txt
+
+    - name: Rodar lint
+      run: |
+        . venv/bin/activate
+        pylint salcoin/
+
+    - name: Rodar testes
+      run: |
+        . venv/bin/activate
+        python -m unittest discover -s tests
+
