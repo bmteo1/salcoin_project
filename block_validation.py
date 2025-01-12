@@ -3,9 +3,9 @@ Este módulo contém funções para validação de transações de blocos, inclu
 cheques de Prova de Participação (PoS) e Prova de História (PoH).
 """
 
-from transaction_utils import validate_coinbase_tx, validate_transaction, has_duplicates
-from pos import is_valid_validator
-from poh import generate_time_hash, validate_time_hash
+from .transaction_utils import validate_coinbase_tx, validate_transaction, has_duplicates
+from .pos import is_valid_validator
+from .poh import generate_time_hash, validate_time_hash
 
 def validate_block_transactions(transactions, unspent_tx_outs, block_index, validator_stake):
     """
